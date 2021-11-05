@@ -2,7 +2,7 @@ Name of Quantlet: COVID_Risk_Narratives
 
 Published in: Digital Finance 
 
-Description: The supporting materials for paper "COVID Risk Narratives: A Computational Linguistic Approach to the Econometric Identification of Narrative Risk During a Pandemic". Techniques included: sentiment analysis (bag-of-words method), topic modelling (LDA), word embedding (word2vec), SIR epidemiological model, vector autoregression. Main use of the codes: 1) Identification of important/perennial economic narrative. 2) Monitor narratives of interest for financial forecasting. 
+Description: The supporting materials for paper "COVID Risk Narratives: A Computational Linguistic Approach to the Econometric Identification of Narrative Risk During a Pandemic". Techniques included: sentiment analysis (bag-of-words method), topic modelling (LDA), word embedding (word2vec), SIR epidemiological model, vector autoregression. Main use of the codes: 1) Identification of important/perennial economic narratives. 2) Monitor narratives of interest for financial forecasting. 
 
 Keywords: narrative economics, COVID-19, natural language processing, tone analysis, early warning indicator
 
@@ -12,4 +12,4 @@ Submitted: 20211105
 
 Input: Raw texts that contain the narratives of interest
 
-Output: Identified narratives that could be used in financial prediction
+Output: Identified narratives and the features that could be used in financial forecasting
