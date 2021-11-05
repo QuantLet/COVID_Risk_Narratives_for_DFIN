@@ -1,0 +1,197 @@
+---
+title: "R Notebook for VECM with Risk Narrative Measures and VIX"
+output: html_notebook
+---
+
+
+```{r}
+# install.packages("tsDyn")
+library(tsDyn)
+library(vars)
+```
+
+```{r}
+# JOHANSEN COINTEGRATION 
+library(urca)
+library(forecast)
+library(tidyverse)
+```
+
+```{r}
+### load the data
+rm(list = ls(all.names = TRUE))
+library("readxl")
+my_data <- read_excel("Data_VECM_RiskNarra_VIX.xlsx",guess_max = 10000)
+
+# convert to monthly when necessary
+library(dplyr)
+Narramonthly <- my_data %>%mutate(month = format(date, "%m"), year = format(date, "%Y")) %>%group_by(year, month) %>% summarise(total = sum(RiskNarratives))
+Narramonthly <- rename(Narramonthly, RiskNarratives = total)
+
+VIXmonthly   <- my_data %>%mutate(year = year(date), month = month(date)) %>%
+  group_by(year, month)%>%summarise(total = mean(VIX,na.rm=TRUE))
+VIXmonthly   <-rename(VIXmonthly, VIX = total)
+
+SPmonthly   <- my_data %>%mutate(year = year(date), month = month(date)) %>%
+  group_by(year, month)%>%summarise(total = mean(SP500,na.rm=TRUE))
+SPmonthly   <-rename(SPmonthly, SP500 = total)
+
+my_data <- data.frame(Narramonthly$month, Narramonthly$RiskNarratives, VIXmonthly$VIX, SPmonthly$SP500)
+colnames(my_data) <- c("date", "RiskNarratives", "VIX","SP500")
+
+# drop missing rows
+my_data <- my_data %>% drop_na()
+
+```
+
+
+```{r}
+apply(my_data, 2, sd)
+# standardize data to be zero mean and 1 std
+my_data <- scale(my_data[,2:4])
+
+### declare the time series objects
+# class(my_data$date)
+# library(xts) # this package does not work well here
+
+## daily, weekly or monthly data
+# risknarra_d <- ts(my_data[,"Risk Narratives"], start=c(1980,1,2), frequency = 1)
+# vix_d <- ts(my_data[,"VIX"], start=c(1980,1,2), frequency = 1)
+# sp_d <- ts(my_data[,"SP500"], start=c(1980,1,2), frequency = 1)
+
+risknarra_d <- my_data[,"RiskNarratives"]
+vix_d <- my_data[,"VIX"]
+sp_d <- my_data[,"SP500"]
+
+autoplot(cbind(ts(risknarra_d),ts(vix_d)))
+
+# stationarity test
+library(tseries)
+# adf.test(risknarra_d)
+# adf.test(sp_d)
+# adf.test(vix_d)
+pp.test(risknarra_d)
+pp.test(sp_d)
+pp.test(vix_d)
+
+### create the system
+dset_d <- cbind(risknarra_d,vix_d)
+# dset_d <- cbind(vix_d,risknarra_d)
+# dset_d <- cbind(risknarra_d,vix_d,sp_d)
+
+
+### select the optimal number of lags
+lagselect <- VARselect(dset_d,lag.max = 6, type = "const")
+selected_lags <- lagselect$selection
+# define a function to get the mode
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+# get the mode of the number of lags.
+selected_lag <- getmode(selected_lags) - 1 # need to have "minus one", because it's difference
+print(selected_lags)
+print(selected_lag)
+# lagselect$criteria
+
+cointest_trace <- ca.jo(dset_d, type = "trace", ecdet = "const", K = selected_lag)
+summary(cointest_trace)
+
+cointest_eigen <- ca.jo(dset_d, type = "eigen", ecdet = "const", K = selected_lag)
+summary(cointest_eigen)
+
+num_coint = 1
+
+
+```
+
+
+```{r}
+# build the VECM model
+model1 <- VECM(dset_d,selected_lag,r=num_coint,estim = ("2OLS"))
+summary(model1)
+
+```
+
+```{r}
+# diagnostic tests
+model1var <- vec2var(cointest_trace,r = num_coint)
+# serial correlation
+# serial1 <- serial.test(model1var) #,lags.pt = 5, type = "PT.asymptotic"
+# serial1
+
+# arch test
+# arch1 <- arch.test(model1var, lags.multi = 15)
+# arch1
+
+# normality of residuals
+# norm1 <- normality.test(model1var) 
+# norm1
+
+# IRF
+nahead <- 10
+IRFvix <- irf(model1var, impulse = "vix_d", response = "risknarra_d", n.ahead =nahead, boot = TRUE)
+plot(IRFvix,ylab = "Risk Narrative Intensity", main = "VIX's shock to Risk Narrative Intensity")
+IRFnarra <- irf(model1var, impulse = "risknarra_d", response = "vix_d", n.ahead =nahead, boot = TRUE)
+plot(IRFnarra,ylab = "VIX", main = "Risk Narratives' shock to VIX")
+# IRFsp <- irf(model1var, impulse = "risknarra_d", response = "sp_d", n.ahead =25, boot = TRUE)
+# plot(IRFsp,ylab = "Risk Narrative Intensity", main = "SP500' shock to Risk Narrative Intensity")
+
+```
+```{r}
+# variance decomposition
+FEVD <- fevd(model1var,n.ahead = 10)
+plot(FEVD)
+```
+
+```{r}
+# standard VAR 
+model2 <- VAR(dset_d,p= selected_lag+1, type = "const", season = NULL, exog = NULL)
+
+# IRFs
+
+IRFvix <- irf(model2, impulse = "vix_d", response = "risknarra_d", n.ahead =10, boot = TRUE)
+jpeg("/Users/yutingchen/colorful_life/Research/Corona/data/Output/IRFvix.jpg", width = 800, height = 350)
+plot(IRFvix,ylab = "Risk Narrative Intensity", main = "VIX's shock to Risk Narrative Intensity", sub = NA,mar = c(2, 5, 0, 5),oma=c(2,0,3,0),cex.main=3)
+dev.off() 
+jpeg("/Users/yutingchen/colorful_life/Research/Corona/data/Output/IRFnarra.jpg", width = 800, height = 350)
+IRFnarra <- irf(model2, impulse = "risknarra_d", response = "vix_d", n.ahead =10, boot = TRUE)
+plot(IRFnarra,ylab = "VIX", main = "Risk Narratives' shock to VIX",sub = NA,mar = c(2, 5, 0, 5),oma=c(2,0,3,0),cex.main=3)
+dev.off() 
+
+### Combine the figures using a python program
+
+```
+```{r}
+# Granger causality
+# coeftest(model2, vcov = NeweyWest(model2, lag = selected_lag))
+Grangervix <- causality(model2, cause = "vix_d", vcov.=NeweyWest(model2, lag = selected_lag)) # vcov.=vcovHC(model2)
+Grangervix
+Grangernarra <- causality(model2, cause = "risknarra_d", vcov.=NeweyWest(model2, lag = selected_lag))
+Grangernarra
+
+```
+
+
+```{r}
+# VECM forecast
+# forecast1 <- predict(model1var,n.ahead=30,ci = 0.95)
+# fanchart(forecast1, names = "VIX")
+
+```
+
+```{r}
+# I can directly use VAR because the two series are tested stationary
+ols1 <- lm(risknarra_d~vix_d)
+summary(ols1)
+
+# acf(risknarra_d)
+# pacf(risknarra_d)
+# 
+# acf(vix_d)
+# pacf(vix_d)
+
+
+
+```
+
