@@ -8,7 +8,7 @@ Keywords: narrative economics, COVID-19, natural language processing, tone analy
 
 Author: Yuting Chen, University College Dublin
 
-Submitted: 20211105
+Submitted: 2021.11.05
 
 Input: Raw texts that contain the narratives of interest
 
